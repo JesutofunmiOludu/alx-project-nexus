@@ -158,7 +158,7 @@ Ensure you have the following installed:
 
 1. **Clone the repository**
 ```bash
-git clone (https://github.com/JesutofunmiOludu/alx-project-nexus).git
+git clone https://github.com/yourusername/job-board-backend.git
 cd job-board-backend
 ```
 
@@ -348,6 +348,44 @@ POST   /api/users/                  - Create user (Admin)
 DELETE /api/users/{id}/             - Delete user (Admin)
 ```
 
+#### Employer Endpoints
+```
+GET    /api/employers/profile/      - Get employer profile
+PUT    /api/employers/profile/      - Update employer profile
+GET    /api/employers/companies/    - List employer's companies
+POST   /api/employers/companies/    - Create new company
+GET    /api/employers/jobs/         - List employer's job postings
+GET    /api/employers/applications/ - List applications for employer's jobs
+PATCH  /api/employers/applications/{id}/status/ - Update application status
+```
+
+#### Freelancer Endpoints
+```
+GET    /api/freelancers/profile/           - Get freelancer profile
+PUT    /api/freelancers/profile/           - Update freelancer profile
+GET    /api/freelancers/portfolio/         - List portfolio projects
+POST   /api/freelancers/portfolio/         - Add portfolio project
+PUT    /api/freelancers/portfolio/{id}/    - Update portfolio project
+DELETE /api/freelancers/portfolio/{id}/    - Delete portfolio project
+GET    /api/freelancers/experience/        - List work experience
+POST   /api/freelancers/experience/        - Add work experience
+GET    /api/freelancers/education/         - List education
+POST   /api/freelancers/education/         - Add education
+GET    /api/freelancers/skills/            - List skills
+POST   /api/freelancers/skills/            - Add skill
+GET    /api/freelancers/reviews/           - Get reviews
+```
+
+#### Company Endpoints
+```
+GET    /api/companies/              - List all companies
+GET    /api/companies/{id}/         - Get company details
+POST   /api/companies/              - Create company (Employer)
+PUT    /api/companies/{id}/         - Update company (Employer/Admin)
+DELETE /api/companies/{id}/         - Delete company (Admin)
+GET    /api/companies/{id}/jobs/    - List jobs for a company
+```
+
 ### Example Request
 
 ```bash
@@ -400,9 +438,9 @@ curl -X GET "http://localhost:8000/api/jobs/search/suggest/?q=backend+dev" \
 
 | Role | Permissions |
 |------|-------------|
-| **Admin** | Full CRUD on all resources, user management, analytics access |
-| **Employer** | Create/update/delete own jobs, view applications for own jobs, send invitations to freelancers |
-| **Freelancer** | Apply for jobs, manage own profile, view own applications, write proposals, accept/deny invitations |
+| **Admin** | Full CRUD on all resources, user management, system configuration, analytics access, verification approvals |
+| **Employer** | Create/manage Companies, post/update/delete own Jobs, view/review Applications for own Jobs, message Freelancers |
+| **Freelancer** | Apply for Jobs, manage own Profile/Portfolio/Experience, save Jobs, receive Recommendations, message Employers |
 
 ### Security Best Practices
 
@@ -415,6 +453,33 @@ curl -X GET "http://localhost:8000/api/jobs/search/suggest/?q=backend+dev" \
 
 ## 🗄️ Database Schema
 
+### Entity Relationship Diagram
+
+```mermaid
+erDiagram
+    User ||--o| EmployerProfile : "has"
+    User ||--o| FreelancerProfile : "has"
+    User ||--o{ Job : "creates"
+    User ||--o{ Application : "submits"
+    
+    EmployerProfile ||--o{ Company : "manages"
+    EmployerProfile ||--o{ Job : "posts"
+    
+    FreelancerProfile ||--o{ UserSkill : "has"
+    FreelancerProfile ||--o{ Portfolio : "has"
+    FreelancerProfile ||--o{ WorkExperience : "has"
+    FreelancerProfile ||--o{ Education : "has"
+    
+    Job ||--o{ Application : "receives"
+    Job }o--|| Category : "belongs to"
+    Job }o--|| Company : "posted by"
+    Job ||--o{ JobSkill : "requires"
+    
+    Company ||--o{ Job : "posts"
+    Skill ||--o{ JobSkill : "required for"
+    Skill ||--o{ UserSkill : "possessed by"
+```
+
 ### Core Models
 
 #### User Model
@@ -423,54 +488,257 @@ curl -X GET "http://localhost:8000/api/jobs/search/suggest/?q=backend+dev" \
 - email (unique)
 - password (hashed)
 - role (admin/employer/freelancer)
-- is_active, is_verified
+- account_type (employer/freelancer)
+- is_active, is_verified, is_email_verified
+- created_at, updated_at, last_login
+```
+
+**User Types:**
+- **Admin**: System administrators with full access
+- **Employer**: Companies/recruiters who post jobs
+- **Freelancer**: Job seekers who apply for positions
+
+#### EmployerProfile Model (One-to-One with User)
+```python
+- id (UUID, PK)
+- user_id (FK to User)
+- first_name, last_name
+- phone, position_title
+- bio, profile_picture_url
+- linkedin_url
+- primary_company_id (FK to Company)
+- can_post_jobs (Boolean)
+- jobs_posted_count, active_jobs_count
+- verification_status (unverified/pending/verified)
+- verified_at
 - created_at, updated_at
 ```
+
+**Purpose**: Manages employer accounts who post job openings. Employers can manage multiple companies and track their hiring activities.
+
+#### FreelancerProfile Model (One-to-One with User)
+```python
+- id (UUID, PK)
+- user_id (FK to User)
+- first_name, last_name
+- phone, bio
+- profile_picture_url
+- resume_url, portfolio_url
+- linkedin_url, github_url
+- service_categories (JSON)
+- preferred_project_types (JSON)
+- preferred_locations (JSON)
+- hourly_rate_min, hourly_rate_max, rate_currency
+- is_available, is_open_to_remote
+- projects_completed
+- average_rating, total_reviews
+- total_experience_years
+- availability_hours (JSON)
+- time_zones (JSON)
+- payment_methods (Text)
+- created_at, updated_at
+```
+
+**Purpose**: Comprehensive profile for freelancers/job seekers with skills, experience, portfolio, and work preferences.
+
+#### Company Model
+```python
+- id (UUID, PK)
+- employer_id (FK to EmployerProfile)
+- name (unique), description
+- logo_url, cover_image_url
+- website, email, phone
+- industry, size
+- headquarters_location
+- office_locations (JSON)
+- founded_date, employee_count
+- culture_description
+- benefits (JSON)
+- social_media_links (JSON)
+- is_verified, verified_at
+- created_at, updated_at
+```
+
+**Purpose**: Company profiles managed by employers for job postings and branding.
 
 #### Job Model
 ```python
 - id (UUID, PK)
-- employer (FK to User)
+- employer_id (FK to EmployerProfile)
+- company_id (FK to Company)
+- category_id (FK to Category)
 - title, description
-- company, location
-- salary_min, salary_max
-- job_type, experience_level
-- category (FK to Category)
-- status (draft/published/closed)
+- requirements, responsibilities, benefits
+- location, is_remote
+- job_type (full_time/part_time/contract/freelance/internship)
+- experience_level (entry/intermediate/senior/lead/executive)
+- salary_min, salary_max, salary_currency
+- salary_period (hourly/monthly/yearly)
+- status (draft/published/closed/archived)
 - search_vector (TSVector for full-text search)
-- view_count, application_count
-- created_at, updated_at, published_at
+- view_count, application_count, save_count
+- published_at, expires_at
+- created_at, updated_at
 ```
 
-#### UserProfile Model
+**Purpose**: Job postings with full-text search capabilities and comprehensive tracking.
+
+#### Application Model
 ```python
-- user (OneToOne to User)
-- skills (JSONField)
-- experience_years
-- preferred_locations (ArrayField)
-- preferred_job_types (ArrayField)
-- resume_url
-- linkedin_url
+- id (UUID, PK)
+- job_id (FK to Job)
+- applicant_id (FK to User)
+- cover_letter, resume_url
+- answers (JSON - for custom questions)
+- status (pending/reviewing/shortlisted/interviewing/offered/accepted/rejected/withdrawn)
+- rejection_reason
+- rating, internal_notes
+- applied_at, reviewed_at, status_changed_at
+- updated_at
+```
+
+**Purpose**: Tracks job applications with status workflow and employer notes.
+
+#### FreelancerProfile Supporting Models
+
+**Portfolio**
+```python
+- id (UUID, PK)
+- freelancer_profile_id (FK)
+- title, description
+- project_url, thumbnail_url
+- images (JSON)
+- technologies_used (JSON)
+- project_date, client_name
+- project_type, is_featured
+- created_at
+```
+
+**WorkExperience**
+```python
+- id (UUID, PK)
+- freelancer_profile_id (FK)
+- company_name, job_title
+- description, responsibilities
+- location
+- start_date, end_date, is_current
+- created_at
+```
+
+**Education**
+```python
+- id (UUID, PK)
+- freelancer_profile_id (FK)
+- institution, degree
+- field_of_study, description
+- start_date, end_date, is_current
+- gpa
+- created_at
+```
+
+**Certification**
+```python
+- id (UUID, PK)
+- freelancer_profile_id (FK)
+- name, issuing_organization
+- credential_id, credential_url
+- issue_date, expiry_date
+- does_not_expire
+- created_at
+```
+
+**FreelancerReview**
+```python
+- id (UUID, PK)
+- freelancer_profile_id (FK)
+- reviewer_id (FK to User)
+- job_id (FK to Job)
+- rating (1-5)
+- review_text
+- rating_breakdown (JSON)
+- created_at
+```
+
+#### Skill & JobSkill Models
+```python
+# Skill (Master table)
+- id (UUID, PK)
+- name (unique), slug (unique)
+- description
+- category (programming/framework/tool/soft_skill/language)
+- popularity_score
+- created_at
+
+# UserSkill (Many-to-Many: Freelancer <-> Skill)
+- id (UUID, PK)
+- freelancer_profile_id (FK)
+- skill_id (FK)
+- proficiency_level (beginner/intermediate/advanced/expert)
+- years_of_experience
+- last_used
+- created_at
+
+# JobSkill (Many-to-Many: Job <-> Skill)
+- id (UUID, PK)
+- job_id (FK)
+- skill_id (FK)
+- proficiency_level (beginner/intermediate/advanced/expert)
+- is_required (Boolean)
+- years_required
 ```
 
 #### JobRecommendation Model
 ```python
 - id (UUID, PK)
-- user (FK to User)
-- job (FK to Job)
+- user_id (FK to User)
+- job_id (FK to Job)
 - score (Float, 0-1)
 - reason (Text)
+- metadata (JSON)
+- algorithm_type (content_based/collaborative/hybrid/trending)
+- is_viewed, is_clicked, is_applied
+- created_at, expires_at
+```
+
+#### Category Model
+```python
+- id (UUID, PK)
+- name (unique), slug (unique)
+- description
+- parent_id (FK to Category - for hierarchical categories)
+- job_count
+- icon_url
+- created_at, updated_at
+```
+
+#### SavedJob Model
+```python
+- id (UUID, PK)
+- user_id (FK to User)
+- job_id (FK to Job)
+- notes, tags (JSON)
 - created_at
 ```
 
-#### Application Model
+#### JobView Model (Analytics)
 ```python
 - id (UUID, PK)
-- job (FK to Job)
-- applicant (FK to User)
-- cover_letter, resume_url
-- status (pending/reviewed/accepted/rejected)
-- applied_at, reviewed_at
+- user_id (FK to User)
+- job_id (FK to Job)
+- ip_address, user_agent
+- duration_seconds, referrer
+- viewed_at
+```
+
+#### Notification Model
+```python
+- id (UUID, PK)
+- user_id (FK to User)
+- notification_type (application_status/job_match/message/system)
+- title, message
+- data (JSON), action_url
+- is_read, is_sent, is_email_sent
+- created_at, read_at, sent_at
 ```
 
 ### Database Indexes
@@ -484,6 +752,8 @@ CREATE INDEX idx_job_description_trgm ON jobs USING gin(description gin_trgm_ops
 -- Job search and filtering
 CREATE INDEX idx_job_location ON jobs(location);
 CREATE INDEX idx_job_category ON jobs(category_id);
+CREATE INDEX idx_job_employer ON jobs(employer_id);
+CREATE INDEX idx_job_company ON jobs(company_id);
 CREATE INDEX idx_job_status_published ON jobs(status, published_at);
 CREATE INDEX idx_job_type ON jobs(job_type);
 CREATE INDEX idx_job_salary ON jobs(salary_min, salary_max);
@@ -491,12 +761,64 @@ CREATE INDEX idx_job_salary ON jobs(salary_min, salary_max);
 -- Application queries
 CREATE INDEX idx_application_job_status ON applications(job_id, status);
 CREATE INDEX idx_application_applicant ON applications(applicant_id);
+CREATE INDEX idx_application_status_date ON applications(status, applied_at);
 
 -- Recommendation system
 CREATE INDEX idx_recommendation_user_score ON job_recommendations(user_id, score DESC);
 CREATE INDEX idx_job_view_count ON jobs(view_count DESC);
 CREATE INDEX idx_job_application_count ON jobs(application_count DESC);
+
+-- User profile optimization
+CREATE INDEX idx_user_email ON users(email);
+CREATE INDEX idx_user_role_active ON users(role, is_active);
+CREATE INDEX idx_employer_profile_user ON employer_profiles(user_id);
+CREATE INDEX idx_freelancer_profile_user ON freelancer_profiles(user_id);
+
+-- Company and employer relationships
+CREATE INDEX idx_company_employer ON companies(employer_id);
+CREATE INDEX idx_company_verified ON companies(is_verified);
+
+-- Skills and matching
+CREATE INDEX idx_user_skill_freelancer ON user_skills(freelancer_profile_id);
+CREATE INDEX idx_user_skill_skill ON user_skills(skill_id);
+CREATE INDEX idx_job_skill_job ON job_skills(job_id);
+CREATE INDEX idx_job_skill_skill ON job_skills(skill_id);
+
+-- Portfolio and work history
+CREATE INDEX idx_portfolio_freelancer ON portfolios(freelancer_profile_id);
+CREATE INDEX idx_work_experience_freelancer ON work_experiences(freelancer_profile_id);
+CREATE INDEX idx_education_freelancer ON educations(freelancer_profile_id);
+
+-- Analytics and tracking
+CREATE INDEX idx_job_view_job_date ON job_views(job_id, viewed_at);
+CREATE INDEX idx_saved_job_user ON saved_jobs(user_id);
+CREATE INDEX idx_notification_user_unread ON notifications(user_id, is_read);
 ```
+
+### Key Relationships
+
+**User Account Types:**
+- Each User has ONE of: EmployerProfile OR FreelancerProfile
+- Determined by `account_type` and `role` fields
+
+**Employer Workflow:**
+1. Employer creates/manages Companies
+2. Employer posts Jobs under Companies
+3. Employer reviews Applications
+4. Employer can manage multiple Companies
+
+**Freelancer Workflow:**
+1. Freelancer builds profile with Skills, Portfolio, Experience
+2. Freelancer searches and applies for Jobs
+3. Freelancer receives Recommendations
+4. Freelancer gets Reviews from Employers
+
+**Job Lifecycle:**
+1. Employer creates Job (draft)
+2. Job published with full-text search indexing
+3. Freelancers view, save, and apply
+4. Applications tracked through status workflow
+5. Job closed or archived after hiring
 
 ## ⚡ Performance Optimization
 
@@ -894,7 +1216,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Deployment Guide](docs/DEPLOYMENT.md)
 
 ### Community
-- GitHub Issues: [Report bugs or request features](https://github.com/JesutofunmiOludu/alx-project-nexus/issues)
+- GitHub Issues: [Report bugs or request features](https://github.com/yourusername/job-board-backend/issues)
 - Email: support@yourdomain.com
 - Discord: [Join our community](https://discord.gg/your-invite)
 
