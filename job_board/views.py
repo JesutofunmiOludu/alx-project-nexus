@@ -1,8 +1,9 @@
-from django.shortcuts import render
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
+
+from .permissions import IsOwnerOrReadOnly, IsEmployer, IsFreelancer
 
 from .models import (
     User, EmployerProfile, FreelancerProfile, Company, Category,
@@ -34,10 +35,12 @@ class UserViewSet(viewsets.ModelViewSet):
     
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsOwnerOrReadOnly]
     
     def get_permissions(self):
-        """Allow unauthenticated users to register."""
+        """
+        Allow unauthenticated users to register.
+        """
         if self.action == 'create':
             return [permissions.AllowAny()]
         return super().get_permissions()
@@ -60,7 +63,7 @@ class EmployerProfileViewSet(viewsets.ModelViewSet):
     
     queryset = EmployerProfile.objects.select_related('user', 'primary_company').all()
     serializer_class = EmployerProfileSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     
     def get_serializer_class(self):
         """Return detailed serializer for retrieve action."""
@@ -81,7 +84,7 @@ class FreelancerProfileViewSet(viewsets.ModelViewSet):
         'certifications', 'reviews'
     ).all()
     serializer_class = FreelancerProfileSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     
     def get_serializer_class(self):
         """Return detailed serializer for retrieve action."""
@@ -103,7 +106,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
     
     queryset = Company.objects.select_related('employer').all()
     serializer_class = CompanySerializer
-    # permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     
     def perform_create(self, serializer):
         """Automatically set the employer field from the user's profile."""
@@ -128,7 +131,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    # permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
     @action(detail=True, methods=['get'])
     def jobs(self, request, pk=None):
@@ -147,7 +150,7 @@ class JobViewSet(viewsets.ModelViewSet):
     """ViewSet for Job."""
     
     queryset = Job.objects.select_related('employer', 'company', 'category').all()
-    # permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
@@ -156,6 +159,16 @@ class JobViewSet(viewsets.ModelViewSet):
         elif self.action in ['create', 'update', 'partial_update']:
             return JobCreateUpdateSerializer
         return JobDetailSerializer
+    
+    def perform_create(self, serializer):
+        """Automatically set the employer field."""
+        try:
+            employer_profile = self.request.user.employer_profile
+            serializer.save(employer=employer_profile)
+        except EmployerProfile.DoesNotExist:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("You must be an Employer to post jobs.")
+
     
     def get_queryset(self):
         """Filter queryset based on query parameters."""

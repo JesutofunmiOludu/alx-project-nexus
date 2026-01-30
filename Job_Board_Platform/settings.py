@@ -11,6 +11,10 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -86,16 +90,16 @@ WSGI_APPLICATION = 'Job_Board_Platform.wsgi.application'
 #    }
 #}
 
-# PostgreSQL Configuration (commented out until password is fixed)
+# PostgreSQL Configuration
 DATABASES = {
-     'default': {
-         'ENGINE': 'django.db.backends.postgresql',
-         'NAME': 'jobboard_db',
-         'USER': 'postgres',
-         'PASSWORD': 'Wh0is@skin9',  # UPDATE THIS WITH YOUR ACTUAL PASSWORD
-         'HOST': 'localhost',
-         'PORT': '5432',
-     }
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME', 'jobboard_db'),
+        'USER': os.getenv('DB_USER', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'password'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
+    }
 }
 
 # Alternative: Using environment variables (recommended for production)
