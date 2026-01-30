@@ -1,5 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+    TokenVerifyView,
+)
 from . import views
 
 # Create a router and register our viewsets
@@ -38,5 +43,11 @@ router.register(r'notifications', views.NotificationViewSet, basename='notificat
 
 # URL patterns
 urlpatterns = [
+    # JWT Authentication endpoints
+    path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/auth/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    
+    # API routes
     path('api/', include(router.urls)),
 ]

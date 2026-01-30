@@ -19,7 +19,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'role', 'account_type', 'is_active', 
+            'id', 'email', 'account_type', 'is_active', 
             'is_verified', 'is_email_verified', 'full_name',
             'created_at', 'updated_at', 'last_login'
         ]
@@ -147,7 +147,7 @@ class CompanySerializer(serializers.ModelSerializer):
             'benefits', 'social_media_links', 'is_verified', 'verified_at',
             'jobs_count', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'verified_at', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'employer', 'verified_at', 'created_at', 'updated_at']
     
     def get_employer_name(self, obj):
         """Get employer's full name."""

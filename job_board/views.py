@@ -36,6 +36,12 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     # permission_classes = [permissions.IsAuthenticated]
     
+    def get_permissions(self):
+        """Allow unauthenticated users to register."""
+        if self.action == 'create':
+            return [permissions.AllowAny()]
+        return super().get_permissions()
+
     def get_serializer_class(self):
         """Return appropriate serializer class."""
         if self.action == 'create':
@@ -61,6 +67,10 @@ class EmployerProfileViewSet(viewsets.ModelViewSet):
         if self.action == 'retrieve':
             return EmployerProfileDetailSerializer
         return EmployerProfileSerializer
+    
+    def perform_create(self, serializer):
+        """Automatically set the user field from the request."""
+        serializer.save(user=self.request.user)
 
 
 class FreelancerProfileViewSet(viewsets.ModelViewSet):
@@ -78,6 +88,10 @@ class FreelancerProfileViewSet(viewsets.ModelViewSet):
         if self.action == 'retrieve':
             return FreelancerProfileDetailSerializer
         return FreelancerProfileSerializer
+    
+    def perform_create(self, serializer):
+        """Automatically set the user field from the request."""
+        serializer.save(user=self.request.user)
 
 
 # ============================================================================
@@ -91,6 +105,15 @@ class CompanyViewSet(viewsets.ModelViewSet):
     serializer_class = CompanySerializer
     # permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
+    def perform_create(self, serializer):
+        """Automatically set the employer field from the user's profile."""
+        try:
+            employer_profile = self.request.user.employer_profile
+            serializer.save(employer=employer_profile)
+        except EmployerProfile.DoesNotExist:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("You must create an Employer Profile before creating a company.")
+
     @action(detail=True, methods=['get'])
     def jobs(self, request, pk=None):
         """Get all jobs for a company."""
