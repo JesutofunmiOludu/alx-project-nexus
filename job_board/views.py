@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
+from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 
 from .permissions import IsOwnerOrReadOnly, IsEmployer, IsFreelancer
 
@@ -178,13 +179,16 @@ class JobViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             queryset = queryset.filter(status='published')
         
-        # Search by title or description
+        # PostgreSQL Full-Text Search
         search = self.request.query_params.get('search', None)
         if search:
-            queryset = queryset.filter(
-                Q(title__icontains=search) | 
-                Q(description__icontains=search)
-            )
+            vector = SearchVector('title', weight='A') + \
+                     SearchVector('description', weight='B') + \
+                     SearchVector('requirements', weight='C')
+            query = SearchQuery(search)
+            queryset = queryset.annotate(
+                rank=SearchRank(vector, query)
+            ).filter(rank__gte=0.1).order_by('-rank')
         
         # Filter by location
         location = self.request.query_params.get('location', None)
