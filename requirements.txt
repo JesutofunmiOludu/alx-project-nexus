@@ -7,4 +7,7 @@ django-filter>=23.0
 markdown>=3.5
 drf-yasg>=1.21.7
 djangorestframework-simplejwt>=5.3.1
+django-redis>=5.4.0
+redis>=5.0.1
+celery>=5.3.6
 

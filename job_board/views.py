@@ -2,6 +2,9 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_cookie
 from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 
 from .permissions import IsOwnerOrReadOnly, IsEmployer, IsFreelancer
@@ -25,6 +28,8 @@ from .serializers import (
     JobRecommendationSerializer, SavedJobSerializer, JobViewSerializer,
     NotificationSerializer
 )
+from .tasks import send_application_notification
+
 
 
 # ============================================================================
@@ -153,6 +158,11 @@ class JobViewSet(viewsets.ModelViewSet):
     queryset = Job.objects.select_related('employer', 'company', 'category').all()
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     
+    @method_decorator(cache_page(60 * 15)) # Cache for 15 minutes
+    @method_decorator(vary_on_cookie)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+    
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
         if self.action == 'list':
@@ -227,7 +237,9 @@ class JobViewSet(viewsets.ModelViewSet):
             'applicant': request.user.id
         })
         if serializer.is_valid():
-            serializer.save()
+            application = serializer.save()
+            # Trigger background notification
+            send_application_notification.delay(application.id, request.user.email)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
@@ -251,6 +263,11 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     serializer_class = ApplicationSerializer
     # permission_classes = [permissions.IsAuthenticated]
     
+    def perform_create(self, serializer):
+        """Send background notification on creation."""
+        application = serializer.save()
+        send_application_notification.delay(application.id, self.request.user.email)
+
     def get_queryset(self):
         """Filter applications based on user role."""
         queryset = super().get_queryset()
@@ -279,6 +296,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         if 'rejection_reason' in request.data:
             application.rejection_reason = request.data['rejection_reason']
         application.save()
+        
+        # Trigger background notification for status change
+        send_application_notification.delay(application.id, application.applicant.email)
         
         serializer = self.get_serializer(application)
         return Response(serializer.data)
