@@ -28,7 +28,7 @@ from .serializers import (
     JobRecommendationSerializer, SavedJobSerializer, JobViewSerializer,
     NotificationSerializer
 )
-from .tasks import send_application_notification
+from .tasks import notify_employer_new_application, notify_freelancer_application_status, generate_user_recommendations
 
 
 
@@ -102,6 +102,11 @@ class FreelancerProfileViewSet(viewsets.ModelViewSet):
         """Automatically set the user field from the request."""
         serializer.save(user=self.request.user)
 
+    def perform_update(self, serializer):
+        """Update profile and regenerate recommendations."""
+        serializer.save()
+        generate_user_recommendations.delay(self.request.user.id)
+
 
 # ============================================================================
 # COMPANY & CATEGORY VIEWSETS
@@ -171,6 +176,14 @@ class JobViewSet(viewsets.ModelViewSet):
             return JobCreateUpdateSerializer
         return JobDetailSerializer
     
+    def get_permissions(self):
+        """
+        Custom permissions for specific actions.
+        """
+        if self.action in ['apply', 'save']:
+            return [permissions.IsAuthenticated()]
+        return super().get_permissions()
+    
     def perform_create(self, serializer):
         """Automatically set the employer field."""
         try:
@@ -237,9 +250,9 @@ class JobViewSet(viewsets.ModelViewSet):
             'applicant': request.user.id
         })
         if serializer.is_valid():
-            application = serializer.save()
+            application = serializer.save(applicant=request.user)
             # Trigger background notification
-            send_application_notification.delay(application.id, request.user.email)
+            notify_employer_new_application.delay(application.id)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
@@ -261,12 +274,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     
     queryset = Application.objects.select_related('job', 'applicant').all()
     serializer_class = ApplicationSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
     
     def perform_create(self, serializer):
         """Send background notification on creation."""
         application = serializer.save()
-        send_application_notification.delay(application.id, self.request.user.email)
+        notify_employer_new_application.delay(application.id)
 
     def get_queryset(self):
         """Filter applications based on user role."""
@@ -298,7 +311,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         application.save()
         
         # Trigger background notification for status change
-        send_application_notification.delay(application.id, application.applicant.email)
+        if new_status == 'accepted':
+            notify_freelancer_application_status.delay(application.id, new_status)
         
         serializer = self.get_serializer(application)
         return Response(serializer.data)
@@ -313,7 +327,7 @@ class SkillViewSet(viewsets.ModelViewSet):
     
     queryset = Skill.objects.all()
     serializer_class = SkillSerializer
-    # permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 
 class UserSkillViewSet(viewsets.ModelViewSet):
@@ -321,7 +335,7 @@ class UserSkillViewSet(viewsets.ModelViewSet):
     
     queryset = UserSkill.objects.select_related('freelancer_profile', 'skill').all()
     serializer_class = UserSkillSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
 
 class JobSkillViewSet(viewsets.ModelViewSet):
@@ -329,7 +343,7 @@ class JobSkillViewSet(viewsets.ModelViewSet):
     
     queryset = JobSkill.objects.select_related('job', 'skill').all()
     serializer_class = JobSkillSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
 
 # ============================================================================
@@ -341,7 +355,7 @@ class PortfolioViewSet(viewsets.ModelViewSet):
     
     queryset = Portfolio.objects.select_related('freelancer_profile').all()
     serializer_class = PortfolioSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
 
 class WorkExperienceViewSet(viewsets.ModelViewSet):
@@ -349,7 +363,7 @@ class WorkExperienceViewSet(viewsets.ModelViewSet):
     
     queryset = WorkExperience.objects.select_related('freelancer_profile').all()
     serializer_class = WorkExperienceSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
 
 class EducationViewSet(viewsets.ModelViewSet):
@@ -357,7 +371,7 @@ class EducationViewSet(viewsets.ModelViewSet):
     
     queryset = Education.objects.select_related('freelancer_profile').all()
     serializer_class = EducationSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
 
 class CertificationViewSet(viewsets.ModelViewSet):
@@ -365,7 +379,7 @@ class CertificationViewSet(viewsets.ModelViewSet):
     
     queryset = Certification.objects.select_related('freelancer_profile').all()
     serializer_class = CertificationSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
 
 class FreelancerReviewViewSet(viewsets.ModelViewSet):
@@ -375,7 +389,7 @@ class FreelancerReviewViewSet(viewsets.ModelViewSet):
         'freelancer_profile', 'reviewer', 'job'
     ).all()
     serializer_class = FreelancerReviewSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
 
 # ============================================================================
@@ -387,11 +401,21 @@ class JobRecommendationViewSet(viewsets.ReadOnlyModelViewSet):
     
     queryset = JobRecommendation.objects.select_related('user', 'job').all()
     serializer_class = JobRecommendationSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
         """Get recommendations for current user."""
-        return super().get_queryset().filter(user=self.request.user)
+        queryset = super().get_queryset().filter(user=self.request.user)
+        
+        # If no recommendations exist, generate them on the fly
+        if not queryset.exists():
+            from .recommendations import RecommendationEngine
+            engine = RecommendationEngine()
+            engine.generate_recommendations(self.request.user)
+            # Refetch
+            queryset = super().get_queryset().filter(user=self.request.user)
+            
+        return queryset
 
 
 class SavedJobViewSet(viewsets.ModelViewSet):
@@ -399,7 +423,7 @@ class SavedJobViewSet(viewsets.ModelViewSet):
     
     queryset = SavedJob.objects.select_related('user', 'job').all()
     serializer_class = SavedJobSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
         """Get saved jobs for current user."""
@@ -411,7 +435,7 @@ class JobViewViewSet(viewsets.ReadOnlyModelViewSet):
     
     queryset = JobView.objects.select_related('user', 'job').all()
     serializer_class = JobViewSerializer
-    # permission_classes = [permissions.IsAdminUser]
+    permission_classes = [permissions.IsAdminUser]
 
 
 class NotificationViewSet(viewsets.ModelViewSet):
@@ -419,7 +443,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
     
     queryset = Notification.objects.select_related('user').all()
     serializer_class = NotificationSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
         """Get notifications for current user."""

@@ -224,11 +224,12 @@ class JobCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = [
-            'company', 'category', 'title', 'description', 'requirements',
+            'id', 'company', 'category', 'title', 'description', 'requirements',
             'responsibilities', 'benefits', 'location', 'is_remote',
             'job_type', 'experience_level', 'salary_min', 'salary_max',
             'salary_currency', 'salary_period', 'status', 'expires_at'
         ]
+        read_only_fields = ['id']
     
     def validate(self, data):
         """Validate job data."""
