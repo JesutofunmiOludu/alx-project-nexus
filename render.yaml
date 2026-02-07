@@ -1,10 +1,9 @@
 version: "1"
 services:
-  # 1. Django Web Service
   - type: web
     name: job-board-api
     runtime: python
-    buildCommand: "bash ./build.sh"
+    buildCommand: "bash build.sh"
     startCommand: "gunicorn Job_Board_Platform.wsgi:application"
     envVars:
       - key: DATABASE_URL
@@ -13,6 +12,7 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
+          type: redis
           name: job-board-redis
           property: connectionString
       - key: SECRET_KEY
@@ -22,13 +22,12 @@ services:
       - key: DJANGO_SETTINGS_MODULE
         value: "Job_Board_Platform.settings"
       - key: ALLOWED_HOSTS
-        value: "*"
+        value: ".onrender.com"
 
-  # 2. Celery Worker
   - type: worker
     name: job-board-worker
     runtime: python
-    buildCommand: "bash ./build.sh"
+    buildCommand: "bash build.sh"
     startCommand: "celery -A Job_Board_Platform worker --loglevel=info"
     envVars:
       - key: DATABASE_URL
@@ -37,15 +36,16 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
+          type: redis
           name: job-board-redis
           property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
 
-# 3. PostgreSQL Database
 databases:
   - name: job-board-db
     plan: free
 
-# 4. Redis for Celery
 redis:
   - name: job-board-redis
     plan: free
