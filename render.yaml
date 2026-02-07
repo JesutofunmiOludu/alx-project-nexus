@@ -42,10 +42,11 @@ services:
       - key: SECRET_KEY
         generateValue: true
 
+  - type: redis
+    name: job-board-redis
+    plan: free
+    ipAllowList: [] # Only allow internal connections
+
 databases:
   - name: job-board-db
-    plan: free
-
-redis:
-  - name: job-board-redis
     plan: free
